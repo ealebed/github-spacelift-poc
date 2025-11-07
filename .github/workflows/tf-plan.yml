@@ -1,0 +1,162 @@
+name: Pull Requests quality gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tf-apply.yml
+      - .github/workflows/tf-plan.yml
+      - 'terraform/**/*.tf'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_PLAN_FILE: terraform.tfplan
+  TF_VERSION: 1.5.4
+
+jobs:
+  paths-filter:
+    name: Filter Paths
+    runs-on: ubuntu-latest
+    outputs:
+      dev: ${{ steps.filter.outputs.dev }}
+      prod: ${{ steps.filter.outputs.prod }}
+    steps:
+      - name: Checkout the latest commit
+        uses: actions/checkout@v5
+
+      - name: Validate changed files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            dev:
+              - 'terraform/modules/**'
+              - 'terraform/envs/dev/**'
+            prod:
+              - 'terraform/modules/**'
+              - 'terraform/envs/prod/**'
+
+  terraform-plan:
+    timeout-minutes: 10
+    name: Terraform plan — ${{ matrix.environment }}
+    needs:
+      - paths-filter
+    if: ${{ needs.paths-filter.outputs.dev == 'true' && always() }} || ${{ needs.paths-filter.outputs.prod == 'true' && always() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ["dev", "prod"]
+    environment: ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/envs/${{ matrix.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Login to AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActionsSession-${{ matrix.environment }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform init
+        id: tf-init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.BACKEND_BUCKET }}" \
+            -backend-config="key=${{ vars.BACKEND_KEY_PREFIX }}/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.BACKEND_DDB_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform fmt
+        id: tf-fmt
+        run: terraform fmt -check
+
+      - name: Terraform validate
+        id: tf-validate
+        run: terraform validate -no-color
+
+      - name: Terraform workspace
+        id: tf-workspace
+        run: terraform workspace new ${{ matrix.environment }} || terraform workspace select ${{ matrix.environment }}
+
+      - name: Terraform plan
+        id: tf-plan
+        run: |
+          set -e
+          terraform plan \
+          -input=false \
+          -no-color | tee tfplan-${{ matrix.environment }}.txt
+          # expose plan as step output
+          {
+            echo "plan<<EOF"
+            cat tfplan-${{ matrix.environment }}.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on Pull Request 
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const envName = '${{ matrix.environment }}';
+            const fmtOutcome = '${{ steps.tf-fmt.outcome }}';
+            const initOutcome = '${{ steps.tf-init.outcome }}';
+            const validateOutcome = '${{ steps.tf-validate.outcome }}';
+            const planOutcome = '${{ steps.tf-plan.outcome }}';
+            const planText = `\n${{ steps.tf-plan.outputs.plan }}`;
+
+            const header = `### Terraform results (${envName})\n` +
+              `- Format & Style: \`${fmtOutcome}\`\n` +
+              `- Init: \`${initOutcome}\`\n` +
+              `- Validate: \`${validateOutcome}\`\n` +
+              `- Plan: \`${planOutcome}\`\n\n` +
+              `<details><summary>Show plan</summary>\n\n` +
+              '```terraform\n' +
+              planText +
+              '\n```\n\n</details>\n\n' +
+              `*Env: \`${envName}\`, Workflow: \`${{ github.workflow }}\`, Run: #${{ github.run_number }}*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = `Terraform results (${envName})`;
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: header,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: header,
+              });
+            }
