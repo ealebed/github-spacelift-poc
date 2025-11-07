@@ -3,7 +3,7 @@ name: Deploy Terraform to AWS
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - .github/workflows/tf-apply.yml
       - .github/workflows/tf-plan.yml

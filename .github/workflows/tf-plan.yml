@@ -3,7 +3,7 @@ name: Pull Requests quality gate
 on:
   pull_request:
     branches:
-      - main
+      - master
     paths:
       - .github/workflows/tf-apply.yml
       - .github/workflows/tf-plan.yml
