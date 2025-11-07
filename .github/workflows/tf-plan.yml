@@ -94,7 +94,14 @@ jobs:
 
       - name: Terraform workspace
         id: tf-workspace
-        run: terraform workspace new ${{ matrix.environment }} || terraform workspace select ${{ matrix.environment }}
+        run: |
+          WORKSPACE="${{ matrix.environment }}"
+          echo "Ensuring workspace '$WORKSPACE' exists and is selected..."
+          if terraform workspace list | sed 's/^[* ]*//g' | grep -qx "$WORKSPACE"; then
+            terraform workspace select "$WORKSPACE"
+          else
+            terraform workspace new "$WORKSPACE"
+          fi
 
       - name: Terraform plan
         id: tf-plan
