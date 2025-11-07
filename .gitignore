@@ -32,3 +32,4 @@ override.tf
 override.tf.json
 terraform.tfvars
 .terraform.lock.hcl
+*.tfbackend
