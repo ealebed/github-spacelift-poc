@@ -3,7 +3,7 @@ resource "aws_s3_bucket" "demo" {
 }
 
 resource "aws_instance" "demo" {
-  ami           = "ami-0c1bc246476a5572b" # pick a valid AMI for eu-west-1
+  ami           = "ami-0c1bc246476a5572b"
   instance_type = "t3.micro"
 
   tags = {
