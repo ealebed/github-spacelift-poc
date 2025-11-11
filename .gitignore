@@ -33,3 +33,4 @@ override.tf.json
 terraform.tfvars
 .terraform.lock.hcl
 *.tfbackend
+api-key-TEST_API_KEY.config
