@@ -32,7 +32,7 @@ Result: Spacelift can now:
 Later, in each stack, you’ll **attach the proper AWS integration** (dev stack → dev role, prod stack → prod role).
 
 ## Step 3 – Create DEV stack (plan + auto-apply after merge)
-
+[Spacelift doc](https://docs.spacelift.io/getting-started/create-stack)
 This stack will handle:
     - **Proposed runs** (speculative plan) on PRs,
     - **Tracked runs** (real plan + apply) on `master` after merge.
@@ -45,25 +45,24 @@ This stack will handle:
     - Repository: your GitHub monorepo.
     - Branch (tracked): `master` (your default branch).
     - Project root (working directory): `terraform/envs/dev`.
-    - Additional project globs: `terraform/modules/`.
+    - Additional project globs: `terraform/modules/**`.
     - Terraform version: `1.5.7` (or newer in case OpenTofu).
 3. Attach AWS Integration:
     - Under Cloud Integrations, attach the `spacelift-dev-role` integration.
 4. Configure run behaviour:
-    - Enable autodeploy / auto-apply for tracked runs (so after a green plan on `master`, it applies automatically in DEV).
-    - Ensure PR integrations are enabled:
-        - Spacelift will create proposed runs on PR branches and post status back. [Proposed runs are plan-only and never apply](https://docs.spacelift.io/concepts/run/proposed). 
+    - Enable autodeploy for tracked runs (so after a green plan on `master`, it applies automatically in DEV).
+    - Enable local preview (allows running local previews for stack using `spacectl` tool).
 5. Save the stack.
 
 Now behaviour is:
-- Push to feature branch with TF change:
+- Push  TF change to feature branch and creating PR to `master` branch:
     - Spacelift creates a Proposed run (speculative plan) for `terraform-dev`.
     - Plan result is sent to GitHub PR as a Check / status and linked from the PR.
 - After PR merge to `master`:
     - Spacelift creates a Tracked run on `terraform-dev`.
-    - It runs plan + apply automatically (DEV auto-deploy).
+    - It runs `terraform plan` + `terraform apply` automatically (DEV auto-deploy).
 
-## Step 5 – Create PROD stack (plan + manual apply, triggered by DEV)
+## Step 4 – Create PROD stack (plan + manual apply, triggered by DEV)
 
 Now create `terraform-prod` stack and wire it to depend on DEV.
 
@@ -75,7 +74,8 @@ Now create `terraform-prod` stack and wire it to depend on DEV.
     - Terraform version: `1.5.7`.
 2. Attach AWS Integration: `spacelift-prod-role` (with access to S3 prod backend).
 3. Configure run behaviour (disable autodeploy):
-    - Make sure auto-apply is OFF for this stack (you want manual approval).
+    - Make sure Autodeploy is OFF for this stack (you want manual approval).
+    - (Optional) Enable local preview (allows running local previews for stack using `spacectl` tool).
 4. Set **DEV → PROD** dependency:
     - Open the `terraform-prod` stack → Dependencies tab. 
     - Add dependency: `terraform-prod` depends on `terraform-dev`.
@@ -99,6 +99,39 @@ You have two options:
     - Use an example like “require 1 approval from specific usernames / team”.
     - Attach this policy to the `terraform-prod` stack.
     - Now PROD runs will literally wait for a specific approver (person or group) to approve in Spacelift’s “Review” UI before proceeding.
+
+Policy example used in demo:
+```
+package spacelift
+
+# Always sample in the beginning to be able to debug more easily!
+sample if { true }
+
+#############################
+# PROD approval by `ealebed`
+#############################
+
+# We only require approval for tracked runs that are still UNCONFIRMED
+requires_approval if {
+  input.run.type  == "TRACKED"
+  input.run.state == "UNCONFIRMED"
+}
+
+# Anything that doesn't require approval is auto-approved
+approve if {
+  not requires_approval
+}
+
+# Shorthand
+approvals := input.reviews.current.approvals
+
+# Approve when at least one approval is given by user `ealebed`
+approve if {
+  requires_approval
+  some i
+  approvals[i].session.login == "ealebed@gmail.com"
+}
+```
 
 Result:
 - PR → proposed runs for both stacks (DEV + PROD) → show plans in PR.
@@ -171,4 +204,3 @@ What happens:
     - The stack’s remote state (Spacelift backend).
     - The stack’s environment variables, AWS integration, policies, etc.
 - Output is streamed back to your terminal as if you ran terraform plan.
-
