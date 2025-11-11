@@ -47,7 +47,12 @@ jobs:
     name: Terraform plan — ${{ matrix.environment }}
     needs:
       - paths-filter
-    if: ${{ needs.paths-filter.outputs.dev == 'true' && always() }} || ${{ needs.paths-filter.outputs.prod == 'true' && always() }}
+    if: >
+      always() &&
+      (
+        needs.paths-filter.outputs.dev == 'true' ||
+        needs.paths-filter.outputs.prod == 'true'
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -106,15 +111,33 @@ jobs:
       - name: Terraform plan
         id: tf-plan
         run: |
-          set -e
-          terraform plan \
-          -input=false \
-          -detailed-exitcode \
-          -no-color \
-          -out tfplan-${{ matrix.environment }} | tee raw-tfplan-${{ matrix.environment }}.txt
+          set -o pipefail
 
-          # JSON for precise counts
+          # Run plan, but don't immediately fail on exit code 2 (changes)
+          set +e
+          terraform plan \
+            -input=false \
+            -detailed-exitcode \
+            -no-color \
+            -out=tfplan-${{ matrix.environment }} | tee raw-tfplan-${{ matrix.environment }}.txt
+          ec=$?
+          set -e
+
+          # ec meanings with -detailed-exitcode:
+          # 0 = no changes, 2 = changes present, 1 = error
+          if [ "$ec" -eq 1 ]; then
+            echo "Terraform plan failed"
+            exit 1
+          fi
+
+          # Create JSON representation of the plan
           terraform show -json tfplan-${{ matrix.environment }} > plan.json
+
+          # Sanity check: ensure plan.json is non-empty
+          if [ ! -s plan.json ]; then
+            echo "plan.json is empty or missing, cannot summarize plan"
+            exit 1
+          fi
 
           # Counts (adds/changes/deletes + replacements)
           adds=$(jq '[.resource_changes[]? | select(.change.actions==["create"])] | length' plan.json)
@@ -125,7 +148,7 @@ jobs:
           # Sanitize the human-readable output: drop runner noise
           sed -E '/^\[command\]/d;/^::debug::/d' raw-tfplan-${{ matrix.environment }}.txt > plan.txt
 
-          # (Optional) Truncate to avoid GH comment limits (~65k)
+          # Truncate to avoid GH comment limits (~65k)
           head -c 60000 plan.txt > plan.trunc.txt
 
           {
@@ -138,6 +161,7 @@ jobs:
             cat plan.trunc.txt
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+
 
       - name: Comment on Pull Request 
         uses: actions/github-script@v7
