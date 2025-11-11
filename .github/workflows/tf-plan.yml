@@ -109,11 +109,18 @@ jobs:
           set -e
           terraform plan \
           -input=false \
-          -no-color | tee tfplan-${{ matrix.environment }}.txt
+          -no-color | tee raw-tfplan-${{ matrix.environment }}.txt
+
+          # Sanitize the human-readable output: drop runner noise
+          sed -E '/^\[command\]/d;/^::debug::/d' raw-tfplan-${{ matrix.environment }}.txt > plan.txt
+
+          # Truncate to avoid GH comment limits (~65k)
+          head -c 60000 plan.txt > plan.trunc.txt
+
           # expose plan as step output
           {
             echo "plan<<EOF"
-            cat tfplan-${{ matrix.environment }}.txt
+            cat plan.trunc.txt
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -129,12 +136,8 @@ jobs:
             const validateOutcome = '${{ steps.tf-validate.outcome }}';
             const planOutcome = '${{ steps.tf-plan.outcome }}';
             const planText = `\n${{ steps.tf-plan.outputs.plan }}`;
-
-            # Sanitize the human-readable output: drop runner noise
-            sed -E '/^\[command\]/d;/^::debug::/d' ${planText} > plan.txt
-
-            # Truncate to avoid GH comment limits (~65k)
-            head -c 60000 plan.txt > plan.trunc.txt
+            
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             const header = `### Terraform results (${envName})\n` +
               `- Init: \`${initOutcome}\`\n` +
@@ -143,9 +146,9 @@ jobs:
               `- Plan: \`${planOutcome}\`\n\n` +
               `<details><summary>Show plan</summary>\n\n` +
               '```terraform\n' +
-              $(cat plan.trunc.txt) +
+              planText +
               '\n```\n\n</details>\n\n' +
-              `*Env: \`${envName}\`, Workflow: \`${{ github.workflow }}\`, Run: #${{ github.run_number }}*`;
+              `*Env: \`${envName}\`, Workflow: \`${{ github.workflow }}\`, Run: #${{ github.run_number }} • [View run](${runUrl})*`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
