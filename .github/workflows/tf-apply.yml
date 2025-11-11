@@ -13,9 +13,9 @@ env:
   TF_VERSION: 1.5.4
 
 jobs:
-  # 1) DEV: validate + plan + apply automatically
+  # 1) DEV: validate + apply automatically
   terraform-dev:
-    name: Terraform DEV — plan & apply
+    name: Terraform DEV — apply
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -86,7 +86,7 @@ jobs:
           issue-title: "Approve Terraform PROD apply"
           issue-body: "Approve applying Terraform changes to PROD for run #${{ github.run_number }}"
 
-  # 3) PROD: apply the approved plan
+  # 3) PROD: apply
   terraform-prod-apply:
     name: Terraform PROD — apply
     runs-on: ubuntu-latest
