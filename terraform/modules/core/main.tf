@@ -11,3 +11,4 @@ resource "aws_instance" "demo" {
     Environment = var.environment
   }
 }
+
