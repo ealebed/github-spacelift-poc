@@ -148,7 +148,7 @@ jobs:
               '```terraform\n' +
               planText +
               '\n```\n\n</details>\n\n' +
-              `*Env: \`${envName}\`, Workflow: \`${{ github.workflow }}\`, Run: #${{ github.run_number }} • [View run](${runUrl})*`;
+              `*Env: \`${envName}\`, Workflow: \`${{ github.workflow }}\`, [View run](${runUrl})*`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
