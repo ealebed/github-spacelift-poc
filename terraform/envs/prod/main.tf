@@ -9,7 +9,6 @@ module "core" {
   project_name = var.project_name
 }
 
-
-# resource "aws_s3_bucket" "demo" {
-#   bucket = "new-s3-${var.environment}-531438381462"
-# }
+resource "aws_s3_bucket" "demo" {
+  bucket = "new-s3-${var.environment}-531438381462"
+}
