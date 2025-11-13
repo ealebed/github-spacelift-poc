@@ -1,0 +1,177 @@
+name: Pull Requests quality gate for Spacelift infrastructure
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - .github/workflows/spacelift-apply.yml
+      - .github/workflows/spacelift-plan.yml
+      - 'spacelift/*.tf'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_PLAN_FILE: terraform.tfplan
+  TF_VERSION: 1.5.7
+
+jobs:
+  paths-filter:
+    name: Filter Paths
+    runs-on: ubuntu-latest
+    outputs:
+      spacelift: ${{ steps.filter.outputs.spacelift }}
+    steps:
+      - name: Checkout the latest commit
+        uses: actions/checkout@v5
+
+      - name: Validate changed files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            spacelift:
+              - 'spacelift/**'
+
+  terraform-plan:
+    timeout-minutes: 10
+    name: Terraform plan Spacelift
+    needs:
+      - paths-filter
+    if: ${{ needs.paths-filter.outputs.spacelift == 'true' && always() }}
+    runs-on: ubuntu-latest
+    environment: spacelift
+    defaults:
+      run:
+        working-directory: spacelift
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Login to AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActionsSession-spacelift
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform init
+        id: tf-init
+        env:
+          TF_VAR_api_key_endpoint: ${{ vars.SPACELIFT_API_KEY_ENDPOINT }}
+          TF_VAR_spacelift_key_id: ${{ secrets.SPACELIFT_API_KEY_ID }}
+          TF_VAR_spacelift_key_secret: ${{ secrets.SPACELIFT_API_KEY_SECRET }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.BACKEND_BUCKET }}" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.BACKEND_DDB_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform fmt
+        id: tf-fmt
+        run: terraform fmt -check
+
+      - name: Terraform validate
+        id: tf-validate
+        run: terraform validate -no-color
+
+      - name: Terraform workspace
+        id: tf-workspace
+        run: |
+          WORKSPACE="spacelift"
+          echo "Ensuring workspace '$WORKSPACE' exists and is selected..."
+          if terraform workspace list | sed 's/^[* ]*//g' | grep -qx "$WORKSPACE"; then
+            terraform workspace select "$WORKSPACE"
+          else
+            terraform workspace new "$WORKSPACE"
+          fi
+
+      - name: Terraform plan
+        id: tf-plan
+        env:
+          TF_VAR_api_key_endpoint: ${{ vars.SPACELIFT_API_KEY_ENDPOINT }}
+          TF_VAR_spacelift_key_id: ${{ secrets.SPACELIFT_API_KEY_ID }}
+          TF_VAR_spacelift_key_secret: ${{ secrets.SPACELIFT_API_KEY_SECRET }}
+        run: |
+          set -e
+          terraform plan \
+          -input=false \
+          -no-color | tee raw-tfplan-spacelift.txt
+
+          # Sanitize the human-readable output: drop runner noise
+          sed -E '/^\[command\]/d;/^::debug::/d' raw-tfplan-spacelift.txt > plan.txt
+
+          # Truncate to avoid GH comment limits (~65k)
+          head -c 60000 plan.txt > plan.trunc.txt
+
+          # expose plan as step output
+          {
+            echo "plan<<EOF"
+            cat plan.trunc.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on Pull Request 
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const envName = 'spacelift';
+            const initOutcome = '${{ steps.tf-init.outcome }}';
+            const fmtOutcome = '${{ steps.tf-fmt.outcome }}';
+            const validateOutcome = '${{ steps.tf-validate.outcome }}';
+            const planOutcome = '${{ steps.tf-plan.outcome }}';
+            const planText = `\n${{ steps.tf-plan.outputs.plan }}`;
+            
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const header = `### Terraform results (${envName})\n` +
+              `- Init: \`${initOutcome}\`\n` +
+              `- Format & Style: \`${fmtOutcome}\`\n` +
+              `- Validate: \`${validateOutcome}\`\n` +
+              `- Plan: \`${planOutcome}\`\n\n` +
+              `<details><summary>Show plan</summary>\n\n` +
+              '```terraform\n' +
+              planText +
+              '\n```\n\n</details>\n\n' +
+              `*Env: \`${envName}\`, Workflow: \`${{ github.workflow }}\`, [View run](${runUrl})*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = `Terraform results (${envName})`;
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: header,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: header,
+              });
+            }
