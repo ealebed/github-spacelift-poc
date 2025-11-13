@@ -1,5 +1,5 @@
 variable "api_key_endpoint" {
-  type = string
+  type    = string
   default = "https://ealebed.app.spacelift.io"
 }
 
