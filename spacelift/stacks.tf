@@ -24,7 +24,7 @@ resource "spacelift_stack" "storage-dev" {
   enable_well_known_secret_masking = true
   enable_local_preview             = true
   allow_run_promotion              = false
-#   import_state_file                = "../dev-terraform.tfstate"
+  #   import_state_file                = "../dev-terraform.tfstate"
 }
 
 # Attach the AWS integration to any stack(s) that need to use it
@@ -67,7 +67,7 @@ resource "spacelift_stack" "storage-prod" {
   additional_project_globs         = ["terraform/modules/**"]
   enable_well_known_secret_masking = true
   allow_run_promotion              = false
-#   import_state_file                = "../prod-terraform.tfstate"
+  #   import_state_file                = "../prod-terraform.tfstate"
 }
 
 resource "spacelift_aws_integration_attachment" "storage-prod-stack" {
