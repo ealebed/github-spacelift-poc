@@ -3,6 +3,11 @@ terraform {
     spacelift = {
       source = "spacelift.io/spacelift-io/spacelift"
     }
+
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 }
 
@@ -12,8 +17,6 @@ provider "spacelift" {
   api_key_secret   = var.spacelift_key_secret
 }
 
-data "spacelift_account" "this" {}
-
-output "account_name" {
-  value = data.spacelift_account.this.name
+provider "aws" {
+  region = var.aws_region
 }
