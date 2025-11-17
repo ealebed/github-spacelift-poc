@@ -67,6 +67,8 @@ jobs:
           fi
 
       - name: Terraform apply (DEV)
+        env:
+          TF_VAR_environment: dev
         run: terraform apply -input=false -auto-approve
 
   # 2) Manual approval before PROD apply
@@ -141,4 +143,6 @@ jobs:
           fi
 
       - name: Terraform apply (PROD)
+        env:
+          TF_VAR_environment: prod
         run: terraform apply -input=false -auto-approve

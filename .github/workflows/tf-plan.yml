@@ -105,5 +105,7 @@ jobs:
 
       - name: Terraform plan
         id: tf-plan
+        env:
+          TF_VAR_environment: ${{ matrix.environment }}
         run: |
           terraform plan -input=false -out ${{ env.TF_PLAN_FILE }}
