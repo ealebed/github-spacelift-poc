@@ -106,4 +106,4 @@ jobs:
       - name: Terraform plan
         id: tf-plan
         run: |
-          terraform plan -input=false -out ${{ matrix.environment }}-${{ env.TF_PLAN_FILE }}
+          terraform plan -input=false -out ${{ env.TF_PLAN_FILE }}
