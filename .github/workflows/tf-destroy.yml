@@ -31,7 +31,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: terraform/envs/${{ inputs.environment }}
+        working-directory: vanilla-ga/terraform/envs/${{ inputs.environment }}
 
     steps:
       - name: Checkout code

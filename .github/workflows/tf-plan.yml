@@ -7,7 +7,7 @@ on:
     paths:
       - .github/workflows/tf-apply.yml
       - .github/workflows/tf-plan.yml
-      - 'terraform/**/*.tf'
+      - 'vanilla-ga/terraform/**/*.tf'
   workflow_dispatch:
 
 permissions:
@@ -36,11 +36,11 @@ jobs:
         with:
           filters: |
             dev:
-              - 'terraform/modules/**'
-              - 'terraform/envs/dev/**'
+              - 'vanilla-ga/terraform/modules/**'
+              - 'vanilla-ga/terraform/envs/dev/**'
             prod:
-              - 'terraform/modules/**'
-              - 'terraform/envs/prod/**'
+              - 'vanilla-ga/terraform/modules/**'
+              - 'vanilla-ga/terraform/envs/prod/**'
 
   terraform-plan:
     timeout-minutes: 10
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: terraform/envs/${{ matrix.environment }}
+        working-directory: vanilla-ga/terraform/envs/${{ matrix.environment }}
 
     steps:
       - name: Checkout code
