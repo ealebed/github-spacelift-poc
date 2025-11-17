@@ -130,18 +130,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const envName = 'spacelift';
-            const initOutcome = '${{ steps.tf-init.outcome }}';
-            const fmtOutcome = '${{ steps.tf-fmt.outcome }}';
-            const validateOutcome = '${{ steps.tf-validate.outcome }}';
             const planOutcome = '${{ steps.tf-plan.outcome }}';
             const planText = `\n${{ steps.tf-plan.outputs.plan }}`;
             
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             const header = `### Terraform results (${envName})\n` +
-              `- Init: \`${initOutcome}\`\n` +
-              `- Format & Style: \`${fmtOutcome}\`\n` +
-              `- Validate: \`${validateOutcome}\`\n` +
               `- Plan: \`${planOutcome}\`\n\n` +
               `<details><summary>Show plan</summary>\n\n` +
               '```terraform\n' +
