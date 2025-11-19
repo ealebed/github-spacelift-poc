@@ -1,6 +1,6 @@
-resource "aws_s3_bucket" "demo" {
-  bucket = "tf-demo-${var.project_name}-${var.environment}-531438381462"
-}
+# resource "aws_s3_bucket" "demo" {
+#   bucket = "tf-demo-${var.project_name}-${var.environment}-531438381462"
+# }
 
 # resource "aws_instance" "demo" {
 #   ami           = "ami-0c1bc246476a5572b"
